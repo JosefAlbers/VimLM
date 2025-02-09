@@ -1,2 +1,2 @@
-nanollama==0.0.3
+nanollama==0.0.3b0
 watchfiles==1.0.4

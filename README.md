@@ -1,10 +1,8 @@
 # VimLM - Vim Language Model Assistant for privacy-conscious developers
 
-![vimlm](https://github.com/user-attachments/assets/4aa39efe-aa6d-4363-8fe1-cf964d7f849c)
+![vimlm](https://github.com/user-attachments/assets/67a97048-48df-40c1-9109-53c759e85d96)
 
-VimLM brings AI-powered assistance directly into Vim, keeping your workflow smooth and uninterrupted. Instead of constantly switching between your editor and external tools, VimLM provides real-time, context-aware suggestions, explanations, and code insights—all within Vim.
-
-Unlike proprietary cloud-based AI models, VimLM runs entirely offline, ensuring complete privacy, data security, and control. You’re not just using a tool—you own it. Fine-tune, modify, or extend it as needed, without reliance on big tech platforms.
+An LLM-powered coding companion for Vim, inspired by GitHub Copilot/Cursor. Integrates contextual code understanding, summarization, and AI assistance directly into your Vim workflow.
 
 ## Features
 
@@ -49,15 +47,15 @@ vimlm your_file.js
     - Example prompt: "AJAX-ify this app !@#$ ~/scrap/jph00/hypermedia-applications.summ.md"
 
 5. **Follow-Up**: After initial response:
-    - `Ctrl-R`: Continue thread
+    - `Ctrl-r`: Continue thread
     - Example follow-up: "In Manifest V3"
 
 ## Key Bindings
 
 | Binding    | Mode          | Action                                 |
 |------------|---------------|----------------------------------------|
-| `Ctrl-L`   | Normal/Visual | Send current file + selection to LLM   |
-| `Ctrl-R`   | Normal        | Continue conversation                  |
+| `Ctrl-l`   | Normal/Visual | Send current file + selection to LLM   |
+| `Ctrl-r`   | Normal        | Continue conversation                  |
 | `Esc`      | Prompt        | Cancel input                           |
 
 

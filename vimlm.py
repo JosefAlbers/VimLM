@@ -26,22 +26,34 @@ import tempfile
 from pathlib import Path
 from string import Template
 
-DEBUG = False 
+DEBUG = True
 NUM_TOKEN = 2000
 SEP_CMD = '!@#$'
-CACHE_DIR = os.path.expanduser("~/vimlm")
+VIMLM_DIR = os.path.expanduser("~/vimlm")
 WATCH_DIR = os.path.expanduser("~/vimlm/watch_dir")
+CFG_FILE = "cfg.json"
 LOG_FILE = "log.json"
-CACHE_FILE = "cache.json"
+LTM_FILE = "cache.json"
 OUT_FILE = "response.md"
-FILES = ["context", "yank", "user", "tree"]  
-LOG_PATH = os.path.join(CACHE_DIR, LOG_FILE)
-CACHE_PATH = os.path.join(CACHE_DIR, CACHE_FILE)
+IN_FILES = ["context", "yank", "user", "tree"]
+CFG_PATH = os.path.join(VIMLM_DIR, CFG_FILE)
+LOG_PATH = os.path.join(VIMLM_DIR, LOG_FILE)
+LTM_PATH = os.path.join(VIMLM_DIR, LTM_FILE)
 OUT_PATH = os.path.join(WATCH_DIR, OUT_FILE) 
 
 if os.path.exists(WATCH_DIR):
     shutil.rmtree(WATCH_DIR)
 os.makedirs(WATCH_DIR)
+
+try:
+    with open(CFG_PATH, "r") as f:
+        cfg = cfg.load(f)
+    DEBUG = config.get("DEBUG", DEBUG)
+    NUM_TOKEN = config.get("NUM_TOKEN", NUM_TOKEN)
+    SEP_CMD = config.get("SEP_CMD", SEP_CMD)
+except:
+    with open(CFG_PATH, 'w') as f:
+        json.dump(dict(DEBUG=DEBUG, NUM_TOKEN=NUM_TOKEN, SEP_CMD=SEP_CMD), f, indent=2)
 
 def toout(s, key='tovim'):
     with open(OUT_PATH, 'w', encoding='utf-8') as f:
@@ -102,11 +114,11 @@ def split_str(doc, max_len=2000, get_len=len):
             chunks.append("".join(current_chunk))
     return chunks
 
-def get_context(src_path, max_len=2000, get_len=len):
+def retrieve(src_path, max_len=2000, get_len=len):
     src_path = os.path.expanduser(src_path)
     result = {}
     if not os.path.exists(src_path):
-        tolog(f"The path {src_path} does not exist.", 'get_context')
+        tolog(f"The path {src_path} does not exist.", 'retrieve')
         return result
     if os.path.isfile(src_path):
         try:
@@ -114,7 +126,7 @@ def get_context(src_path, max_len=2000, get_len=len):
                 content = f.read()
             result = {src_path:dict(timestamp=os.path.getmtime(src_path), list_str=split_str(content, max_len=max_len, get_len=get_len))}
         except Exception as e:
-            tolog(f'Skipped {filename} due to {e}', 'get_context')
+            tolog(f'Skipped {filename} due to {e}', 'retrieve')
         return result
     for filename in os.listdir(src_path):
         try:
@@ -126,7 +138,7 @@ def get_context(src_path, max_len=2000, get_len=len):
                     content = f.read()
                 result[file_path] = dict(timestamp=os.path.getmtime(file_path), list_str=split_str(content, max_len=max_len, get_len=get_len))
         except Exception as e:
-            tolog(f'Skipped {filename} due to {e}', 'get_context')
+            tolog(f'Skipped {filename} due to {e}', 'retrieve')
             continue
     return result
 
@@ -134,12 +146,12 @@ def get_ntok(s):
     return len(chat.tokenizer.encode(s)[0])
 
 def ingest(src):
-    def load_cache(cache_path=CACHE_PATH):
+    def load_cache(cache_path=LTM_PATH):
         if os.path.exists(cache_path):
             with open(cache_path, 'r', encoding='utf-8') as f:
                 return json.load(f)
         return {}
-    def dump_cache(new_data, cache_path=CACHE_PATH):
+    def dump_cache(new_data, cache_path=LTM_PATH):
         current_data = load_cache(cache_path)
         for k, v in new_data.items():
             if k not in current_data or v['timestamp'] > current_data[k]['timestamp']:
@@ -149,7 +161,7 @@ def ingest(src):
     toout('Ingesting...')
     format_ingest = '{volat}{incoming}\n\n---\n\nPlease provide a succint bullet point summary for above:'
     format_volat = 'Here is a summary of part 1 of **{k}**:\n\n---\n\n{newsum}\n\n---\n\nHere is the next part:\n\n---\n\n'
-    dict_doc = get_context(src, get_len=get_ntok)
+    dict_doc = retrieve(src, get_len=get_ntok)
     dict_sum = {}
     cache = load_cache()
     for k, v in dict_doc.items():
@@ -197,10 +209,10 @@ async def monitor_directory():
     async for changes in awatch(WATCH_DIR):
         found_files = {os.path.basename(f) for _, f in changes}
         tolog(f'{found_files=}') # DEBUG
-        if FILES[-1] in found_files and set(FILES).issubset(set(os.listdir(WATCH_DIR))):
+        if IN_FILES[-1] in found_files and set(IN_FILES).issubset(set(os.listdir(WATCH_DIR))):
             tolog(f'listdir()={os.listdir(WATCH_DIR)}') # DEBUG
             data = {}
-            for file in FILES:
+            for file in IN_FILES:
                 path = os.path.join(WATCH_DIR, file)
                 with open(path, 'r', encoding='utf-8') as f:
                     data[file] = f.read().strip()
@@ -241,8 +253,9 @@ async def process_files(data):
     prompt = str_template.format(**data)
     tolog(prompt, 'tollm')
     toout('')
-    response = chat(prompt, max_new=NUM_TOKEN - get_ntok(prompt), verbose=False, stream=OUT_PATH)[0][:-10].strip()
-    toout(response)
+    response = chat(prompt, max_new=NUM_TOKEN - get_ntok(prompt), verbose=False, stream=OUT_PATH)
+    toout(response[0][:-10].strip())
+    tolog(response[-1], 'tps')
 
 VIMLMSCRIPT = Template(r"""
 let s:watched_dir = expand('$WATCH_DIR')

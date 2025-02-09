@@ -5,7 +5,7 @@ with open("requirements.txt") as f:
 
 setup(
     name="vimlm",
-    version="0.0.3",
+    version="0.0.4",
     author="Josef Albers",
     author_email="albersj66@gmail.com",
     readme='README.md',
@@ -15,7 +15,7 @@ setup(
     url="https://github.com/JosefAlbers/vimlm",
     # packages=find_packages(),
     py_modules=['vimlm'],
-    python_requires=">=3.13.1",
+    python_requires=">=3.12.8",
     install_requires=requirements,
     entry_points={
         "console_scripts": [

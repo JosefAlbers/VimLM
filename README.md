@@ -1,4 +1,4 @@
-# VimLM - Vim Language Model Assistant for privacy-conscious developers
+# VimLM - Local LLM-Powered Coding Assistant for Vim
 
 ![vimlm](https://github.com/user-attachments/assets/67a97048-48df-40c1-9109-53c759e85d96)
 
@@ -6,11 +6,20 @@ An LLM-powered coding companion for Vim, inspired by GitHub Copilot/Cursor. Inte
 
 ## Features
 
-- **Real-Time Interaction with local LLMs**: Runs **fully offline** with local models (default: uncensored Llama-3.2-3B).
-- **Integration with Vim's Native Workflow**: Simple Vim keybindings for quick access and split-window interface for non-intrusive responses.
-- **Context-Awareness Beyond Single Files**: Inline support for external documents and project files for richer, more informed responses.
-- **Conversational AI Assistance**: Goes beyond simple code suggestions-explains reasoning, provides alternative solutions, and allows interactive follow-ups. 
-- **Versatile Use Cases**: Not just for coding-use it for documentation lookup, general Q&A, or even casual (uncensored) conversations.
+- **Model Agnostic** - Use any MLX-compatible model via config file
+- **Vim-Native UX** - Ctrl-l/Ctrl-r keybindings and split-window responses
+- **Deep Context** - Understands code context from:
+    - Current file
+    - Visual selections
+    - Referenced files
+    - Project directory structure
+- **Conversational Coding** - Iterative refinement with follow-up queries
+- **Air-Gapped Security** - 100% offline - no APIs, no tracking, no data leaks
+
+## Requirements
+
+- Apple M-series chip (M1/M2/M3/M4)
+- Python 3.12.8
 
 ## Installation
 
@@ -18,15 +27,9 @@ An LLM-powered coding companion for Vim, inspired by GitHub Copilot/Cursor. Inte
 pip install vimlm
 ```
 
-## Usage
+## Quick Start
 
-1. Start Vim with VimLM:
-
-```zsh
-vimlm
-```
-
-or
+1. Launch with default model (DeepSeek-R1-Distill-Qwen-7B-4bit):
 
 ```zsh
 vimlm your_file.js
@@ -37,7 +40,7 @@ vimlm your_file.js
     - Example prompt: "Regex for removing html tags in item.content"
 
 3. **From Visual Mode**:
-    - Select text → `Ctrl-l`: Send selection + file context
+    - Select code → `Ctrl-l`: Send selection + file context
     - Example prompt: "Convert this to async/await syntax"
 
 4. **Add Context**: Use `!@#$` to include additional files/folders:
@@ -49,6 +52,28 @@ vimlm your_file.js
 5. **Follow-Up**: After initial response:
     - `Ctrl-r`: Continue thread
     - Example follow-up: "In Manifest V3"
+
+## Advanced Configuration
+
+### Custom Model Setup
+
+1. **Browse models**: [MLX Community Models on Hugging Face](https://huggingface.co/mlx-community)
+
+2. **Edit config file**:
+
+```json
+{
+ "LLM_MODEL": "/path/to/your/mlx_model"
+}
+```
+
+3. **Save to**:
+
+```
+~/vimlm/cfg.json
+```
+
+4. **Restart VimLM**
 
 ## Key Bindings
 

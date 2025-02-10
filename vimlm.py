@@ -17,7 +17,6 @@ import subprocess
 import json
 import os
 from watchfiles import awatch
-from nanollama32 import Chat
 import shutil
 import time
 from itertools import accumulate
@@ -27,6 +26,7 @@ from pathlib import Path
 from string import Template
 
 DEBUG = True
+LLM_MODEL = "mlx-community/DeepSeek-R1-Distill-Qwen-7B-4bit"
 NUM_TOKEN = 2000
 SEP_CMD = '!@#$'
 VIMLM_DIR = os.path.expanduser("~/vimlm")
@@ -41,20 +41,6 @@ LOG_PATH = os.path.join(VIMLM_DIR, LOG_FILE)
 LTM_PATH = os.path.join(VIMLM_DIR, LTM_FILE)
 OUT_PATH = os.path.join(WATCH_DIR, OUT_FILE) 
 
-if os.path.exists(WATCH_DIR):
-    shutil.rmtree(WATCH_DIR)
-os.makedirs(WATCH_DIR)
-
-try:
-    with open(CFG_PATH, "r") as f:
-        cfg = cfg.load(f)
-    DEBUG = config.get("DEBUG", DEBUG)
-    NUM_TOKEN = config.get("NUM_TOKEN", NUM_TOKEN)
-    SEP_CMD = config.get("SEP_CMD", SEP_CMD)
-except:
-    with open(CFG_PATH, 'w') as f:
-        json.dump(dict(DEBUG=DEBUG, NUM_TOKEN=NUM_TOKEN, SEP_CMD=SEP_CMD), f, indent=2)
-
 def toout(s, key='tovim'):
     with open(OUT_PATH, 'w', encoding='utf-8') as f:
         f.write(s)
@@ -63,18 +49,40 @@ def toout(s, key='tovim'):
 def tolog(log, key='debug'):
     if not DEBUG and key == 'debug':
         return
-    if os.path.exists(LOG_PATH):
+    try:
         with open(LOG_PATH, "r", encoding="utf-8") as log_f:
             logs = json.load(log_f)
-    else:
+    except:
         logs = []
     logs.append(dict(key=key, log=log, timestamp=time.ctime()))
     with open(LOG_PATH, "w", encoding="utf-8") as log_f:
         json.dump(logs, log_f, indent=2)
 
+if os.path.exists(WATCH_DIR):
+    shutil.rmtree(WATCH_DIR)
+os.makedirs(WATCH_DIR)
+
+try:
+    with open(CFG_PATH, "r") as f:
+        config = json.load(f)
+    DEBUG = config.get("DEBUG", DEBUG)
+    LLM_MODEL = config.get("LLM_MODEL", LLM_MODEL)
+    NUM_TOKEN = config.get("NUM_TOKEN", NUM_TOKEN)
+    SEP_CMD = config.get("SEP_CMD", SEP_CMD)
+except Exception as e:
+    tolog(str(e))
+    with open(CFG_PATH, 'w') as f:
+        json.dump(dict(DEBUG=DEBUG, LLM_MODEL=LLM_MODEL, NUM_TOKEN=NUM_TOKEN, SEP_CMD=SEP_CMD), f, indent=2)
+
 toout('Loading LLM...')
-chat = Chat(variant='uncn_llama_32_3b_it')
-toout('LLM is ready')
+if LLM_MODEL is None:
+    from nanollama32 import Chat
+    chat = Chat(variant='uncn_llama_32_3b_it')
+    toout('LLM is ready')
+else:
+    from mlx_lm_utils import Chat
+    chat = Chat(model_path=LLM_MODEL)
+    toout(f'{LLM_MODEL.split('/')[-1]} is ready')
 
 def is_binary(file_path):
     try:
@@ -142,9 +150,6 @@ def retrieve(src_path, max_len=2000, get_len=len):
             continue
     return result
 
-def get_ntok(s):
-    return len(chat.tokenizer.encode(s)[0])
-
 def ingest(src):
     def load_cache(cache_path=LTM_PATH):
         if os.path.exists(cache_path):
@@ -161,7 +166,7 @@ def ingest(src):
     toout('Ingesting...')
     format_ingest = '{volat}{incoming}\n\n---\n\nPlease provide a succint bullet point summary for above:'
     format_volat = 'Here is a summary of part 1 of **{k}**:\n\n---\n\n{newsum}\n\n---\n\nHere is the next part:\n\n---\n\n'
-    dict_doc = retrieve(src, get_len=get_ntok)
+    dict_doc = retrieve(src, get_len=chat.get_ntok)
     dict_sum = {}
     cache = load_cache()
     for k, v in dict_doc.items():
@@ -178,14 +183,14 @@ def ingest(src):
             accum = ''
             for s in list_str:
                 chat.reset()
-                newsum = chat(format_ingest.format(volat=volat, incoming=s.strip()), max_new=max_new_sum, verbose=False, stream=None)[0][:-10].strip()
+                newsum = chat(format_ingest.format(volat=volat, incoming=s.strip()), max_new=max_new_sum, verbose=False, stream=None)['text']
                 accum += newsum + ' ...\n'
                 volat = format_volat.format(k=k, newsum=newsum)
         else:
             accum = list_str[0]
         chat.reset()
         toout('')
-        chat_summary = chat(format_ingest.format(volat=f'**{k}**:\n', incoming=accum), max_new=int(NUM_TOKEN/4), verbose=False, stream=OUT_PATH)[0][:-10].strip()
+        chat_summary = chat(format_ingest.format(volat=f'**{k}**:\n', incoming=accum), max_new=int(NUM_TOKEN/4), verbose=False, stream=OUT_PATH)['text']
         dict_sum[k] = dict(timestamp=v_stamp, summary=chat_summary)
     dump_cache(dict_sum)
     result = ''
@@ -253,9 +258,9 @@ async def process_files(data):
     prompt = str_template.format(**data)
     tolog(prompt, 'tollm')
     toout('')
-    response = chat(prompt, max_new=NUM_TOKEN - get_ntok(prompt), verbose=False, stream=OUT_PATH)
-    toout(response[0][:-10].strip())
-    tolog(response[-1], 'tps')
+    response = chat(prompt, max_new=NUM_TOKEN - chat.get_ntok(prompt), verbose=False, stream=OUT_PATH)
+    toout(response['text'])
+    tolog(response['benchmark'])
 
 VIMLMSCRIPT = Template(r"""
 let s:watched_dir = expand('$WATCH_DIR')

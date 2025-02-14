@@ -24,61 +24,75 @@ LLM-powered coding companion for Vim, inspired by GitHub Copilot/Cursor. Integra
 
 ## Quick Start
 
-Install:
-
 ```zsh
 pip install vimlm
-```
-
-Launch:
-
-```zsh
 vimlm
 ```
 
-or
-
-```zsh
-vimlm path/to/your_file
-```
-
-This launches Vim with the LLM in a split window, ready to assist you.
-
 ## Basic Usage
 
-1. **From Normal Mode**:
-    - `Ctrl-l`: Adds current line + file to context
-    - Example prompt: "Regex for removing html tags from item.content"
+### 1. **From Normal Mode**  
+- **`Ctrl-l`**: Add current line + file to context
+  *Example prompt:* `"Regex for removing HTML tags from item.content"`
 
-2. **From Visual Mode**:
-    - Select code → `Ctrl-l`: Adds selected block + current file to context
-    - Example prompt: "Convert this to async/await syntax"
+### 2. **From Visual Mode**  
+- Select code → **`Ctrl-l`**: Add selected block + current file to context
+  *Example prompt:* `"Convert this to async/await syntax"`
 
-3. **Inline Commands**:
+### 3. **Follow-Up Conversations**  
+- **`Ctrl-j`**: Continue current thread
+  *Example follow-up:* `"Use Manifest V3 instead"`
 
-!include: Adds specified outside files/folders to context:
-    - `!include` (no path): Current folder
-    - `!include ~/scrap/jph00/hypermedia-applications.summ.md`: Specific folder
-    - `!include ~/wtm/utils.py`: Specific file
-    - Example prompt: "AJAX-ify this app @ ~/scrap/jph00/hypermedia-applications.summ.md"
+### 4. **Code Extraction & Replacement**  
+- **`Ctrl-p`**: Insert code blocks from response into:  
+  - Last visual selection (Normal mode)  
+  - Active selection (Visual mode)  
 
-!deploy: Extract code blocks to files in user specified dir (current dir if none specified).
+**Workflow Example**:  
+1. Select a block of code in Visual mode  
+2. Prompt with `Ctrl-l`: `"Convert this to async/await syntax"`  
+3. Press `Ctrl-p` to replace selection with generated code  
 
-!continue: Lets the LLM resume the generation from where it had halted due to length limits.
+### 5. **Inline Commands**  
 
-!followup: Continue the thread (equivalent to `Ctrl-j`
+#### `!include` - Add External Context  
+```text
+!include [PATH]  # Add files/folders to context
+```
+- **`!include`** (no path): Current folder  
+- **`!include ~/projects/utils.py`**: Specific file  
+- **`!include ~/docs/api-specs/`**: Entire folder  
+*Example:* `"AJAX-ify this app !include ~/scrap/hypermedia-applications.summ.md"`
 
-4. **Follow-Up**: After initial response:
-    - `Ctrl-j`: Continue thread
-    - Example follow-up: "In Manifest V3"
+#### `!deploy` - Generate Project Files  
+```text
+!deploy [DEST_DIR]  # Extract code blocks to directory
+```
+- **`!deploy`** (no path): Current directory  
+- **`!deploy ./src`**: Specific directory  
+*Example:* `"Create REST API endpoint !deploy ./api"`
 
-4. **Code Extraction: Press `Ctrl-p` to choose a code block from the response and insert them into:
-    - The last selected visual block (in Normal mode)
-    - The current selection (in Visual mode)
-    - Example workflow:
-        1. Select a block of code in Visual mode.
-        2. Prompt the LLM with `Ctrl-l` (e.g., "Convert this to async/await syntax").
-        3. Once the response is generated, press `Ctrl-p` to replace the selected block with the extracted code.
+#### `!continue` - Resume Generation  
+```text
+!continue [MAX_TOKENS]  # Continue stopped response
+```
+- **`!continue`**: Default 2000 tokens  
+- **`!continue 3000`**: Custom token limit  
+*Example:* `"tl;dr !include large-file.txt !continue 5000"`
+
+#### `!followup` - Thread Continuation  
+```text
+!followup  # Equivalent to Ctrl-j
+```
+*Example:*  
+Initial: `"Create Chrome extension"`  
+Follow-up: `"Add dark mode support !followup"`
+
+### Command Combinations  
+Chain multiple commands in one prompt:  
+```text
+"Create HTMX component !include ~/lib/styles.css !deploy ./components !continue 4000"
+```  
 
 ### Key Bindings
 
@@ -90,9 +104,7 @@ This launches Vim with the LLM in a split window, ready to assist you.
 | `Esc`      | Prompt        | Cancel input                           |
 
 ## Advanced Configuration
-
 VimLM uses a JSON config file with the following configurable parameters:
-
 ```json
 {
   "DEBUG": true,
@@ -102,35 +114,26 @@ VimLM uses a JSON config file with the following configurable parameters:
   "USE_LEADER": false
 }
 ```
-
 ### Custom Model Setup
-
 1. **Browse models**: [MLX Community Models on Hugging Face](https://huggingface.co/mlx-community)
-
 2. **Edit config file**:
-
 ```json
 {
-  "LLM_MODEL": "mlx-community/DeepSeek-R1-Distill-Qwen-7B-4bit"
+  "LLM_MODEL": "mlx-community/DeepSeek-R1-Distill-Qwen-7B-4bit",
+  "NUM_TOKEN": 9999
 }
 ```
-3. **Save to**:
-
-```
-~/vimlm/config.json
-```
-
+3. **Save to**: `~/vimlm/config.json`
 4. **Restart VimLM**
 
-
-### Custom Keybinding
-
+### Custom Key Binding
 If you prefer using `<Leader>` in place of `<Ctrl>` for the ViMLM key bindings:
-
 ```json
 {
   "USER_LEADER": true
 }
 ```
 
+## License
 
+VimLM is licensed under the [Apache-2.0 license](LICENSE).

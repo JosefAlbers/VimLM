@@ -130,7 +130,7 @@ VimLM uses a JSON config file with the following configurable parameters:
 If you prefer using `<Leader>` in place of `<Ctrl>` for the ViMLM key bindings:
 ```json
 {
-  "USER_LEADER": true
+  "USE_LEADER": true
 }
 ```
 

@@ -26,13 +26,18 @@ from pathlib import Path
 from string import Template
 import re
 
-DEBUG = True
-LLM_MODEL = None # "mlx-community/DeepSeek-R1-Distill-Qwen-7B-4bit"
-NUM_TOKEN = 2000
-SEP_CMD = '!'
-USE_LEADER = False
-DO_RESET = True
-SHOW_USER = False 
+DEFAULTS = dict(
+    LLM_MODEL = None, # "mlx-community/DeepSeek-R1-Distill-Qwen-7B-4bit"
+    NUM_TOKEN = 2000,
+    USE_LEADER = False,
+    KEY_MAP = {},
+    DO_RESET = True,
+    SHOW_USER = False, 
+    SEP_CMD = '!',
+    VERSION = '0.0.7',
+    DEBUG = True,
+)
+
 VIMLM_DIR = os.path.expanduser("~/vimlm")
 WATCH_DIR = os.path.expanduser("~/vimlm/watch_dir")
 CFG_FILE = 'cfg.json'
@@ -44,6 +49,36 @@ CFG_PATH = os.path.join(VIMLM_DIR, CFG_FILE)
 LOG_PATH = os.path.join(VIMLM_DIR, LOG_FILE)
 LTM_PATH = os.path.join(VIMLM_DIR, LTM_FILE)
 OUT_PATH = os.path.join(WATCH_DIR, OUT_FILE) 
+
+def is_old(config):
+    v_str = config.get('VERSION', 0)
+    for min_v, usr_v in zip(DEFAULTS['VERSION'].split('.'), v_str.split('.')):
+        if int(min_v) < int(usr_v):
+            return False
+        elif int(min_v) > int(usr_v): 
+            return True
+    return False
+
+if os.path.exists(WATCH_DIR):
+    shutil.rmtree(WATCH_DIR)
+os.makedirs(WATCH_DIR)
+
+try:
+    with open(CFG_PATH, "r") as f:
+        config = json.load(f)
+    if is_old(config):
+        for p in [CFG_PATH, LOG_PATH, LTM_PATH]:
+            if os.path.isfile(p):
+                os.remove(p)
+        raise ValueError(f'Version mismatch')
+except Exception as e:
+    print(e)
+    config = DEFAULTS
+    with open(CFG_PATH, 'w') as f:
+        json.dump(DEFAULTS, f, indent=2)
+
+for k, v in DEFAULTS.items():
+    globals()[k] = config.get(k, v)
 
 def toout(s, key=None, mode=None):
     key = '' if key is None else ':'+key
@@ -63,23 +98,6 @@ def tolog(log, key='debug'):
     logs.append(dict(key=key, log=log, timestamp=time.ctime()))
     with open(LOG_PATH, "w", encoding="utf-8") as log_f:
         json.dump(logs, log_f, indent=2)
-
-if os.path.exists(WATCH_DIR):
-    shutil.rmtree(WATCH_DIR)
-os.makedirs(WATCH_DIR)
-
-try:
-    with open(CFG_PATH, "r") as f:
-        config = json.load(f)
-    DEBUG = config.get("DEBUG", DEBUG)
-    LLM_MODEL = config.get("LLM_MODEL", LLM_MODEL)
-    NUM_TOKEN = config.get("NUM_TOKEN", NUM_TOKEN)
-    SEP_CMD = config.get("SEP_CMD", SEP_CMD)
-    USE_LEADER = config.get("USE_LEADER", USE_LEADER)
-except Exception as e:
-    tolog(str(e))
-    with open(CFG_PATH, 'w') as f:
-        json.dump(dict(DEBUG=DEBUG, LLM_MODEL=LLM_MODEL, NUM_TOKEN=NUM_TOKEN, SEP_CMD=SEP_CMD, USE_LEADER=USE_LEADER), f, indent=2)
 
 toout('Loading LLM...')
 if LLM_MODEL is None:
@@ -326,13 +344,27 @@ def process_command(data):
     data['include'] = ''
     for cmd in cmds:
         if cmd.startswith('include'):
-            arg = cmd.removeprefix('include').strip('(').strip(')').strip().strip('"').strip("'").strip()
+            arg = cmd.removeprefix('include').strip().strip('(').strip(')').strip().strip('"').strip("'").strip()
             src = data['dir'] if len(arg) == 0 else arg
-            data['include'] += ingest(src)
+            if arg == '%':
+                continue
+            if src.startswith('`') or src.startswith('$('):
+                shell_cmd = src.strip('`') if src.startswith('`') else src.strip('$()')
+                shell_cmd = shell_cmd.strip()
+                try:
+                    result = subprocess.run(shell_cmd, shell=True, capture_output=True, text=True)
+                    if result.returncode == 0:
+                        data['include'] += f'--- **{shell_cmd}** ---\n```\n{result.stdout.strip()}\n```\n---\n\n'
+                    else:
+                        tolog(f'{shell_cmd} failed {result.stderr.strip()}')
+                except Exception as e:
+                    tolog(f'Error executing {shell_cmd}: {e}')
+            else:
+                data['include'] += ingest(src)
 
     for cmd in cmds:
         if cmd.startswith('deploy'):
-            arg = cmd.removeprefix('deploy').strip('(').strip(')').strip().strip('"').strip("'").strip()
+            arg = cmd.removeprefix('deploy').strip().strip('(').strip(')').strip().strip('"').strip("'").strip()
             if len(data['user_prompt']) == 0:
                 deploy(dest=arg)
                 data['user_prompt'] = ''
@@ -395,8 +427,10 @@ async def process_files(data):
     if 'deploy_dest' in data:
         deploy(dest=data['deploy_dest'], reformat=False)
 
-mapl, mapj, mapp = ('<Leader>l', '<Leader>j', '<Leader>p') if USE_LEADER else ('<C-l>', '<C-j>', '<C-p>')
-
+KEYL = KEY_MAP.get('l', 'l')
+KEYJ = KEY_MAP.get('j', 'j')
+KEYP = KEY_MAP.get('p', 'p')
+mapl, mapj, mapp = (f'<Leader>{KEYL}', f'<Leader>{KEYJ}', f'<Leader>{KEYP}') if USE_LEADER else (f'<C-{KEYL}>', f'<C-{KEYJ}>', f'<C-{KEYP}>')
 VIMLMSCRIPT = Template(r"""
 let s:register_names = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u'] 
 let s:watched_dir = expand('$WATCH_DIR')
@@ -515,19 +549,26 @@ function! ExtractAllCodeBlocks()
     return len(code_blocks)
 endfunction
 
-function! PasteIntoLastVisualSelection()
+function! PasteIntoLastVisualSelection(...)
     let num_blocks = ExtractAllCodeBlocks()
-    echo "Extracted " . num_blocks . " blocks into registers @a-@" . s:register_names[num_blocks - 1] . ". Enter register name: "
-    let register_name = nr2char(getchar())
+    if a:0 > 0
+        let register_name = a:1
+    else
+        echo "Extracted " . num_blocks . " blocks into registers @a-@" . s:register_names[num_blocks - 1] . ". Enter register name: "
+        let register_name = nr2char(getchar())
+    endif
+
     if register_name !~ '^[a-z]$'
         echoerr "Invalid register name. Please enter a single lowercase letter (e.g., a, b, c)."
         return
     endif
+
     let register_content = getreg(register_name)
     if register_content == ''
         echoerr "Register @" . register_name . " is empty."
         return
     endif
+
     let current_mode = mode()
     if current_mode == 'v' || current_mode == 'V' || current_mode == ''
         execute 'normal! "' . register_name . 'p'
@@ -537,6 +578,25 @@ function! PasteIntoLastVisualSelection()
     endif
 endfunction
 
+function! VimLM(...) range
+    let user_input = join(a:000, ' ')
+    if empty(user_input)
+        echo "Usage: :VimLM <prompt> [!command1] [!command2] ..."
+        return
+    endif
+    if line("'<") == line("'>")
+        silent! execute "normal! V\<ESC>"
+    endif
+    silent execute "'<,'>w! " . s:watched_dir . "/yank"
+    silent execute "w! " . s:watched_dir . "/context"
+    let user_file = s:watched_dir . '/user'
+    call writefile([user_input], user_file, 'w')
+    let current_file = expand('%:p')
+    let tree_file = s:watched_dir . '/tree'
+    call writefile([current_file], tree_file, 'w')
+endfunction
+
+command! -range -nargs=+ VimLM call VimLM(<f-args>)
 nnoremap $mapp :call PasteIntoLastVisualSelection()<CR>
 vnoremap $mapp <Cmd>:call PasteIntoLastVisualSelection()<CR>
 vnoremap $mapl <Cmd>:call VisualPrompt()<CR>

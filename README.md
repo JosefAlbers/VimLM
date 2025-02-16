@@ -34,17 +34,17 @@ vimlm
 ### 1. **From Normal Mode**  
 **`Ctrl-l`**: Add current line + file to context
 
-*Example prompt:* `"Regex for removing HTML tags from item.content"`
+*Example prompt:* `Regex for removing HTML tags from item.content`
 
 ### 2. **From Visual Mode**  
 Select code → **`Ctrl-l`**: Add selected block + current file to context
 
-*Example prompt:* `"Convert this to async/await syntax"`
+*Example prompt:* `Convert this to async/await syntax`
 
 ### 3. **Follow-Up Conversations**  
 **`Ctrl-j`**: Continue current thread
 
-*Example follow-up:* `"Use Manifest V3 instead"`
+*Example follow-up:* `Use Manifest V3 instead`
 
 ### 4. **Code Extraction & Replacement**  
 **`Ctrl-p`**: Insert code blocks from response into:  
@@ -53,7 +53,7 @@ Select code → **`Ctrl-l`**: Add selected block + current file to context
 
 **Workflow Example**:  
 1. Select a block of code in Visual mode  
-2. Prompt with `Ctrl-l`: `"Convert this to async/await syntax"`  
+2. Prompt with `Ctrl-l`: `Convert this to async/await syntax`  
 3. Press `Ctrl-p` to replace selection with generated code  
 
 ### 5. **Inline Commands**  
@@ -65,8 +65,22 @@ Select code → **`Ctrl-l`**: Add selected block + current file to context
 - **`!include`** (no path): Current folder  
 - **`!include ~/projects/utils.py`**: Specific file  
 - **`!include ~/docs/api-specs/`**: Entire folder  
+- **`!include $(...)`**: **Shell expansions (`$(...)`)** and **current file symbol (`%`)** are supported as well
 
-*Example:* `"AJAX-ify this app !include ~/scrap/hypermedia-applications.summ.md"`
+**Example 1 - In-Context Learning**:
+```text
+AJAX-ify this app !include ~/scrap/hypermedia-applications.summ.md
+```
+
+**Example 2 - Git Log Recap**:
+```text
+Summarize recent changes !include $(git log --oneline -n 50)
+```
+
+**Example 3 - Diagnose Server Errors**: 
+```text
+Diagnose server errors !include $(grep -r "500 Internal Error" ./fuzz | head -n 5)
+```
 
 #### `!deploy` - Generate Project Files  
 ```text
@@ -75,7 +89,7 @@ Select code → **`Ctrl-l`**: Add selected block + current file to context
 - **`!deploy`** (no path): Current directory  
 - **`!deploy ./src`**: Specific directory  
 
-*Example:* `"Create REST API endpoint !deploy ./api"`
+*Example:* `Create REST API endpoint !deploy ./api`
 
 #### `!continue` - Resume Generation  
 ```text
@@ -84,7 +98,7 @@ Select code → **`Ctrl-l`**: Add selected block + current file to context
 - **`!continue`**: Default 2000 tokens  
 - **`!continue 3000`**: Custom token limit  
 
-*Example:* `"tl;dr !include large-file.txt !continue 5000"`
+*Example:* `tl;dr !include large-file.txt !continue 5000`
 
 #### `!followup` - Thread Continuation  
 ```text
@@ -92,22 +106,21 @@ Select code → **`Ctrl-l`**: Add selected block + current file to context
 ```
 *Example:*  
 
-Initial: `"Create Chrome extension"`  
+Initial: `Create Chrome extension`  
 
-Follow-up: `"Add dark mode support !followup"`
+Follow-up: `Add dark mode support !followup`
 
 #### **Command Combinations**
 Chain multiple commands in one prompt:  
 ```text
-"Create HTMX component !include ~/lib/styles.css !deploy ./components !continue 4000"
+Create HTMX component !include ~/lib/styles.css !deploy ./components !continue 4000
 ```  
 
-### 6. **Command-Line Mode `:VimLM`**
+### 6. **Reusable Command Chains**
+Craft and execute complex LLM workflows as single commands, combining prompts, file context, and deployments with command-line `:VimLM`. Store common patterns for later reuse across projects:
 ```vim
-:VimLM "prompt" [!command1] [!command2]...
+:VimLM prompt [!command1] [!command2]...
 ```
-Use predefined command chains for repetitive tasks:
-
 **Example 1 – CI/CD Fixer Macro**:
 ```vim
 " Debug CI failures using error logs

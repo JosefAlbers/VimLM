@@ -1,88 +1,88 @@
 
-# VimLM - Local LLM-Powered Coding Assistant for Vim
+# VimLM - AI-Powered Coding Assistant for Vim
 
-![vimlm](https://raw.githubusercontent.com/JosefAlbers/VimLM/main/assets/captioned_vimlm.gif)
+![VimLM Demo](https://raw.githubusercontent.com/JosefAlbers/VimLM/main/assets/captioned_vimlm.gif)
 
-LLM-powered coding companion for Vim, inspired by GitHub Copilot/Cursor. Integrates contextual code understanding, summarization, and AI assistance directly into your Vim workflow.
+VimLM brings the power of AI directly into your Vim workflow. Maintain focus with keyboard-driven interactions while leveraging AI for code generation, refactoring, and documentation.
+
+Get started quickly with the [tutorial](tutorial.md).
 
 ## Features
-
-- **Model Agnostic** - Use any MLX-compatible model via a configuration file
-- **Vim-Native UX** - Intuitive keybindings and split-window responses
-- **Deep Context** - Understands code context from:
-    - Current file
-    - Visual selections
-    - Referenced files
-    - Project directory structure
-- **Conversational Coding** - Iterative refinement with follow-up queries
-- **Air-Gapped Security** - 100% offline - no APIs, no tracking, no data leaks
+- **Native Vim Integration** - Split-window responses & intuitive keybindings
+- **Offline First** - 100% local execution with MLX-compatible models
+- **Contextual Awareness** - Integrates seamlessly with your codebase and external resources
+- **Conversational Workflow** - Iterate on responses with follow-up queries
+- **Project Scaffolding** - Generate and deploy code blocks to directories
+- **Extensible** - Create custom LLM workflows with command chains
 
 ## Requirements
-
-- Apple M-series chip
+- Apple Silicon (M-series)
 - Python 3.12.8
+- Vim 9.1
 
 ## Quick Start
-
-```zsh
+```bash
 pip install vimlm
 vimlm
 ```
 
 ## Basic Usage
 
-### 1. **From Normal Mode**  
-**`Ctrl-l`**: Add current line + file to context
+| Key Binding | Mode          | Action                                 |
+|-------------|---------------|----------------------------------------|
+| `Ctrl-l`    | Normal/Visual | Prompt LLM                             |
+| `Ctrl-j`    | Normal        | Continue conversation                  |
+| `Ctrl-p`    | Normal/Visual | Import generated code                  |
+| `Esc`       | Prompt        | Cancel input                           |
 
-*Example prompt:* `Regex for removing HTML tags from item.content`
+### 1. **Contextual Prompting**
+`Ctrl-l` to prompt LLM with context:
+- Normal mode: Current file + line
+- Visual mode: Current file + selected block
 
-### 2. **From Visual Mode**  
-Select code → **`Ctrl-l`**: Add selected block + current file to context
+*Example Prompt*: `Create a Chrome extension`
 
-*Example prompt:* `Convert this to async/await syntax`
+### 2. **Conversational Refinement**
+`Ctrl-j` to continue current thread.
 
-### 3. **Follow-Up Conversations**  
-**`Ctrl-j`**: Continue current thread
+*Example Prompt*: `Use manifest V3 instead`
 
-*Example follow-up:* `Use Manifest V3 instead`
+### 3. **Code Substitution**
+`Ctrl-p` to insert generated code block
+- In Normal mode: Into last visual selection
+- In Visual mode: Into current visual selection 
 
-### 4. **Code Extraction & Replacement**  
-**`Ctrl-p`**: Insert code blocks from response into:  
-- Last visual selection (Normal mode)  
-- Active selection (Visual mode)  
-
-**Workflow Example**:  
+*Example Workflow*:  
 1. Select a block of code in Visual mode  
-2. Prompt with `Ctrl-l`: `Convert this to async/await syntax`  
+2. Prompt with `Ctrl-l`: `Use regex to remove html tags from item.content`  
 3. Press `Ctrl-p` to replace selection with generated code  
 
-### 5. **Inline Commands**  
+## Inline Directives
+```text
+:VimLM [PROMPT] [!command1] [!command2]...
+```
 
-#### `!include` - Add External Context  
+`!` prefix to embed inline directives in prompts:
+
+| Directive        | Description                              |
+|------------------|------------------------------------------|
+| `!include PATH`  | Add file/directory/shell output to context |
+| `!deploy DEST`   | Save code blocks to directory            |
+| `!continue N`    | Continue stopped response                |
+| `!followup`      | Continue conversation           |
+
+### 1. **Context Layering**
 ```text
 !include [PATH]  # Add files/folders to context
 ```
 - **`!include`** (no path): Current folder  
 - **`!include ~/projects/utils.py`**: Specific file  
 - **`!include ~/docs/api-specs/`**: Entire folder  
-- **`!include $(...)`**: **Shell expansions (`$(...)`)** and **current file symbol (`%`)** are supported as well
+- **`!include $(...)`**: Shell command output
 
-**Example 1 - In-Context Learning**:
-```text
-AJAX-ify this app !include ~/scrap/hypermedia-applications.summ.md
-```
+*Example*: `Summarize recent changes !include $(git log --oneline -n 50)`
 
-**Example 2 - Git Log Recap**:
-```text
-Summarize recent changes !include $(git log --oneline -n 50)
-```
-
-**Example 3 - Diagnose Server Errors**: 
-```text
-Diagnose server errors !include $(grep -r "500 Internal Error" ./fuzz | head -n 5)
-```
-
-#### `!deploy` - Generate Project Files  
+### 2. **Code Deployment**
 ```text
 !deploy [DEST_DIR]  # Extract code blocks to directory
 ```
@@ -91,7 +91,7 @@ Diagnose server errors !include $(grep -r "500 Internal Error" ./fuzz | head -n 
 
 *Example:* `Create REST API endpoint !deploy ./api`
 
-#### `!continue` - Resume Generation  
+### 3. **Extending Response**
 ```text
 !continue [MAX_TOKENS]  # Continue stopped response
 ```
@@ -100,96 +100,48 @@ Diagnose server errors !include $(grep -r "500 Internal Error" ./fuzz | head -n 
 
 *Example:* `tl;dr !include large-file.txt !continue 5000`
 
-#### `!followup` - Thread Continuation  
-```text
-!followup  # Equivalent to Ctrl-j
-```
-*Example:*  
-
-Initial: `Create Chrome extension`  
-
-Follow-up: `Add dark mode support !followup`
-
-#### **Command Combinations**
-Chain multiple commands in one prompt:  
-```text
-Create HTMX component !include ~/lib/styles.css !deploy ./components !continue 4000
-```  
-
-### 6. **Reusable Command Chains**
-Craft and execute complex LLM workflows as single commands, combining prompts, file context, and deployments with command-line `:VimLM`. Store common patterns for later reuse across projects:
+## Command-Line Mode
 ```vim
 :VimLM prompt [!command1] [!command2]...
 ```
-**Example 1 – CI/CD Fixer Macro**:
+
+Simplify complex tasks by chaining multiple commands together into a single, reusable Vim command.
+
+*Examples*:
 ```vim
 " Debug CI failures using error logs
 :VimLM Fix Dockerfile !include .gitlab-ci.yml !include $(tail -n 20 ci.log)
-```
 
-**Example 2 – Test Generation Workflow**:
-```vim
 " Generate unit tests for selected functions and save to test/
 :VimLM Write pytest tests for this !include ./src !deploy ./test
-```
 
-**Example 3 – Documentation Helper**:
-```vim
 " Add docstrings to all Python functions in file
 :VimLM Add Google-style docstrings !include % !continue 4000
 ```
 
-### Key Bindings
+## Configuration
 
-| Binding    | Mode          | Action                                 |
-|------------|---------------|----------------------------------------|
-| `Ctrl-l`   | Normal/Visual | Send current file + selection to LLM   |
-| `Ctrl-j`   | Normal        | Continue conversation                  |
-| `Ctrl-p`   | Normal/Visual | Replace the selection with generated code |
-| `Esc`      | Prompt        | Cancel input                           |
-
-## Advanced Configuration
-VimLM uses a JSON config file with the following configurable parameters:
-```json
-{
-  "LLM_MODEL": null,
-  "NUM_TOKEN": 2000,
-  "USE_LEADER": false,
-  "KEY_MAP": {},
-  "DO_RESET": true,
-  "SHOW_USER": false,
-  "SEP_CMD": "!",
-  "VERSION": "0.0.7",
-  "DEBUG": true
-} 
-```
-### Custom Model Setup
-1. **Browse models**: [MLX Community Models on Hugging Face](https://huggingface.co/mlx-community)
-2. **Edit config file**:
+### 1. **Model Settings**
+Edit `~/vimlm/cfg.json`:
 ```json
 {
   "LLM_MODEL": "mlx-community/DeepSeek-R1-Distill-Qwen-7B-4bit",
-  "NUM_TOKEN": 9999
+  "NUM_TOKEN": 32768
 }
 ```
-3. **Save to**: `~/vimlm/cfg.json`
-4. **Restart VimLM**
 
-### Custom Key Bindings
-You can also configure shortcuts:
+### 2. **Key Customization**
 ```json
 {
-  "USE_LEADER": true,   // Swap Ctrl for Leader key
-  "KEY_MAP": {          // Remap default keys (l/j/p)
-    "l": "a",           // <Leader>a instead of <Leader>l
-    "j": "s",           // <Leader>s instead of <Leader>j
-    "p": "d"            // <Leader>d instead of <Leader>p
+  "USE_LEADER": true,
+  "KEY_MAP": {
+    "l": "]",
+    "j": "[",
+    "p": "p" 
   }
 }
 ```
 
 ## License
 
-VimLM is licensed under the [Apache-2.0 license](LICENSE).
-
-
+Apache 2.0 - See [LICENSE](LICENSE) for details.

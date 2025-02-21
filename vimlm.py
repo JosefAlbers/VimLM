@@ -18,7 +18,7 @@ import json
 import os
 from watchfiles import awatch
 import shutil
-import time
+from datetime import datetime
 from itertools import accumulate
 import argparse
 import tempfile
@@ -33,11 +33,12 @@ DEFAULTS = dict(
     KEY_MAP = {},
     DO_RESET = True,
     SHOW_USER = False, 
-    SEP_CMD = '!',
-    VERSION = '0.0.7',
-    DEBUG = True,
+    SEP_CMD = ' !',
+    VERSION = '0.0.8',
+    DEBUG = False,
 )
 
+DATE_FORM = "%Y_%m_%d_%H_%M_%S"
 VIMLM_DIR = os.path.expanduser("~/vimlm")
 WATCH_DIR = os.path.expanduser("~/vimlm/watch_dir")
 CFG_FILE = 'cfg.json'
@@ -70,7 +71,7 @@ try:
         for p in [CFG_PATH, LOG_PATH, LTM_PATH]:
             if os.path.isfile(p):
                 os.remove(p)
-        raise ValueError(f'Version mismatch')
+        raise ValueError(f'Updating config')
 except Exception as e:
     print(e)
     config = DEFAULTS
@@ -95,9 +96,21 @@ def tolog(log, key='debug'):
             logs = json.load(log_f)
     except:
         logs = []
-    logs.append(dict(key=key, log=log, timestamp=time.ctime()))
+    logs.append(dict(key=key, log=log, timestamp=datetime.now().strftime(DATE_FORM)))
     with open(LOG_PATH, "w", encoding="utf-8") as log_f:
         json.dump(logs, log_f, indent=2)
+
+def print_log():
+    with open(LOG_PATH, 'r') as f:
+        logs = json.load(f)
+    for log in logs:
+        print(f'\033[37m{log["key"]} {log["timestamp"]}\033[0m')
+        if 'tovim' in log["key"]:
+            print('\033[33m')
+        elif 'tollm' in log["key"]:
+            print('\033[31m')
+        print(log["log"])
+        print('\033[0m')
 
 toout('Loading LLM...')
 if LLM_MODEL is None:
@@ -117,6 +130,7 @@ def deploy(dest=None, src=None, reformat=True):
         with open(src, 'r') as f:
             prompt_deploy = f.read().strip() + '\n\n---\n\n' + prompt_deploy
     if reformat:
+        toout('Deploying...')
         response = chat(prompt_deploy, max_new=NUM_TOKEN, verbose=False, stream=False)['text']
         toout(response, 'deploy')
         lines = response.splitlines()
@@ -371,6 +385,14 @@ def process_command(data):
                 return data
             data['user_prompt'] += "\n\nEnsure that each code block is preceded by a filename in **filename.ext** format. The filename should only contain alphanumeric characters, dots, underscores, or hyphens. Ensure that any extraneous characters are removed from the filenames."
             data['deploy_dest'] = arg
+    for cmd in cmds:
+        if cmd.startswith('write'):
+            arg = cmd.removeprefix('write').strip().strip('(').strip(')').strip().strip('"').strip("'").strip()
+            if len(arg) == 0:
+                arg = 'response'
+                pass
+            timestamp = datetime.now().strftime(DATE_FORM)
+            data['write_dest'] = re.sub(r"[^a-zA-Z0-9_.-]", "", f'{arg}_{timestamp}.md')
     return data
     
 async def monitor_directory():
@@ -423,7 +445,10 @@ async def process_files(data):
         toout(response['text'])
     else:
         toout(response['text'])
-    tolog(response['benchmark'])
+    tolog(response)
+    if 'write_dest' in data:
+        with open(data['write_dest'], 'w') as f:
+            f.write(response['text'])
     if 'deploy_dest' in data:
         deploy(dest=data['deploy_dest'], reformat=False)
 
@@ -434,6 +459,43 @@ mapl, mapj, mapp = (f'<Leader>{KEYL}', f'<Leader>{KEYJ}', f'<Leader>{KEYP}') if 
 VIMLMSCRIPT = Template(r"""
 let s:register_names = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u'] 
 let s:watched_dir = expand('$WATCH_DIR')
+let s:vimlm_enabled = 1
+
+function! ToggleVimLM()
+    if s:vimlm_enabled
+        let s:vimlm_enabled = 0
+        let response_path = s:watched_dir . '/response.md'
+        let bufnum = bufnr(response_path)
+        let winid = bufwinnr(bufnum)
+        if winid != -1
+            execute winid . 'wincmd c'
+        endif
+        if exists('s:monitor_timer')
+            call timer_stop(s:monitor_timer)
+            unlet s:monitor_timer
+        endif
+        echohl WarningMsg | echom "VimLM disabled" | echohl None
+    else
+        let s:vimlm_enabled = 1
+        silent! call Monitor()
+        echohl WarningMsg | echom "VimLM enabled" | echohl None  
+    endif
+endfunction
+
+function! CheckForUpdates(timer)
+    if !s:vimlm_enabled
+        return
+    endif
+    let bufnum = bufnr(s:watched_dir . '/response.md')
+    let winid = bufwinnr(bufnum)
+    if winid == -1
+        call timer_stop(s:monitor_timer)
+        unlet s:monitor_timer
+        call Monitor()
+    else
+        silent! checktime
+    endif
+endfunction
 
 function! Monitor()
     if exists('s:monitor_timer')
@@ -456,13 +518,16 @@ function! Monitor()
     let s:monitor_timer = timer_start(100, 'CheckForUpdates', {'repeat': -1})
 endfunction
 
-function! CheckForUpdates(timer)
+function! ScrollToTop()
     let bufnum = bufnr(s:watched_dir . '/response.md')
-    if bufnum == -1
-        call timer_stop(s:monitor_timer)
-        return
+    if bufnum != -1
+        let winid = bufwinnr(bufnum)
+        if winid > 0
+            execute winid . "wincmd w"
+            normal! gg
+            wincmd p
+        endif
     endif
-    silent! checktime
 endfunction
 
 function! s:CustomInput(prompt) abort
@@ -486,14 +551,13 @@ function! SaveUserInput(prompt)
     let current_file = expand('%:p')
     let tree_file = s:watched_dir . '/tree'
     call writefile([current_file], tree_file, 'w')
+    call ScrollToTop()
 endfunction
 
 function! VisualPrompt()
     silent! execute "normal! \<ESC>"
     silent execute "'<,'>w! " . s:watched_dir . "/yank"
     silent execute "w! " . s:watched_dir . "/context"
-    " silent! execute "normal! `<V`>"
-    " silent! execute "normal! \<ESC>"
     call SaveUserInput('VimLM: ')
 endfunction
 
@@ -501,7 +565,6 @@ function! NormalPrompt()
     silent! execute "normal! V\<ESC>"
     silent execute "'<,'>w! " . s:watched_dir . "/yank"
     silent execute "w! " . s:watched_dir . "/context"
-    " silent! execute "normal! \<ESC>"
     call SaveUserInput('VimLM: ')
 endfunction
 
@@ -557,18 +620,15 @@ function! PasteIntoLastVisualSelection(...)
         echo "Extracted " . num_blocks . " blocks into registers @a-@" . s:register_names[num_blocks - 1] . ". Enter register name: "
         let register_name = nr2char(getchar())
     endif
-
     if register_name !~ '^[a-z]$'
         echoerr "Invalid register name. Please enter a single lowercase letter (e.g., a, b, c)."
         return
     endif
-
     let register_content = getreg(register_name)
     if register_content == ''
         echoerr "Register @" . register_name . " is empty."
         return
     endif
-
     let current_mode = mode()
     if current_mode == 'v' || current_mode == 'V' || current_mode == ''
         execute 'normal! "' . register_name . 'p'
@@ -579,6 +639,10 @@ function! PasteIntoLastVisualSelection(...)
 endfunction
 
 function! VimLM(...) range
+    let tree_file = s:watched_dir . '/tree'
+    while filereadable(tree_file)
+        sleep 100m
+    endwhile
     let user_input = join(a:000, ' ')
     if empty(user_input)
         echo "Usage: :VimLM <prompt> [!command1] [!command2] ..."
@@ -592,10 +656,11 @@ function! VimLM(...) range
     let user_file = s:watched_dir . '/user'
     call writefile([user_input], user_file, 'w')
     let current_file = expand('%:p')
-    let tree_file = s:watched_dir . '/tree'
     call writefile([current_file], tree_file, 'w')
+    call ScrollToTop()
 endfunction
 
+command! ToggleVimLM call ToggleVimLM()
 command! -range -nargs=+ VimLM call VimLM(<f-args>)
 nnoremap $mapp :call PasteIntoLastVisualSelection()<CR>
 vnoremap $mapp <Cmd>:call PasteIntoLastVisualSelection()<CR>
@@ -611,7 +676,6 @@ async def main():
     parser.add_argument("vim_args", nargs=argparse.REMAINDER, help="Vim arguments")
     args = parser.parse_args()
     if args.test:
-        test()
         return
     with tempfile.NamedTemporaryFile(mode='w', suffix='.vim', delete=False) as f:
         f.write(VIMLMSCRIPT)

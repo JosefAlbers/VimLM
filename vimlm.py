@@ -33,8 +33,8 @@ DEFAULTS = dict(
     KEY_MAP = {},
     DO_RESET = True,
     SHOW_USER = False, 
-    SEP_CMD = ' !',
-    VERSION = '0.0.8',
+    SEP_CMD = '!',
+    VERSION = '0.0.9',
     DEBUG = False,
 )
 

@@ -1,3 +1,3 @@
-nanollama==0.0.5
-mlx_lm_utils==0.0.2
+nanollama>=0.0.5
+mlx_lm_utils>=0.0.3
 watchfiles==1.0.4

@@ -12,10 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import nanollama
+import mlx_lm_utils
 import asyncio
 import subprocess
 import json
 import os
+import glob
 from watchfiles import awatch
 import shutil
 from datetime import datetime
@@ -27,20 +30,22 @@ from string import Template
 import re
 
 DEFAULTS = dict(
-    LLM_MODEL = None, # "mlx-community/DeepSeek-R1-Distill-Qwen-7B-4bit"
+    LLM_MODEL = "mlx-community/Qwen2.5-Coder-3B-Instruct-4bit", # None | "mlx-community/DeepSeek-R1-Distill-Qwen-7B-4bit" | "mlx-community/deepseek-r1-distill-qwen-1.5b" |  "mlx-community/phi-4-4bit" (8.25gb) |  "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit" (8.31gb) |  "mlx-community/Qwen2.5-Coder-3B-Instruct-4bit" (1.74gb)
+    FIM_MODEL = "mlx-community/Qwen2.5-Coder-0.5B-4bit", # None | "mlx-community/Qwen2.5-Coder-32B-4bit" |  "mlx-community/Qwen2.5-Coder-0.5B-4bit" (278mb)
     NUM_TOKEN = 2000,
     USE_LEADER = False,
     KEY_MAP = {},
     DO_RESET = True,
     SHOW_USER = False, 
     SEP_CMD = '!',
-    VERSION = '0.0.9',
-    DEBUG = False,
+    THINK = ('<think>', '</think>'),
+    VERSION = '0.1.0',
+    DEBUG = True,
 )
 
 DATE_FORM = "%Y_%m_%d_%H_%M_%S"
-VIMLM_DIR = os.path.expanduser("~/vimlm")
-WATCH_DIR = os.path.expanduser("~/vimlm/watch_dir")
+VIMLM_DIR = os.path.expanduser("~/.vimlm")
+WATCH_DIR = os.path.expanduser("~/.vimlm/watch_dir")
 CFG_FILE = 'cfg.json'
 LOG_FILE = "log.json"
 LTM_FILE = "cache.json"
@@ -51,35 +56,35 @@ LOG_PATH = os.path.join(VIMLM_DIR, LOG_FILE)
 LTM_PATH = os.path.join(VIMLM_DIR, LTM_FILE)
 OUT_PATH = os.path.join(WATCH_DIR, OUT_FILE) 
 
-def is_old(config):
-    v_str = config.get('VERSION', 0)
-    for min_v, usr_v in zip(DEFAULTS['VERSION'].split('.'), v_str.split('.')):
-        if int(min_v) < int(usr_v):
-            return False
-        elif int(min_v) > int(usr_v): 
-            return True
-    return False
+def reset_dir(dir_path):
+    if os.path.exists(dir_path):
+        shutil.rmtree(dir_path)
+    os.makedirs(dir_path)
 
-if os.path.exists(WATCH_DIR):
-    shutil.rmtree(WATCH_DIR)
-os.makedirs(WATCH_DIR)
+def initialize():
+    def is_incompatible(config):
+        v_str = config.get('VERSION', '0.0.0')
+        for min_v, usr_v in zip(DEFAULTS['VERSION'].split('.'), v_str.split('.')):
+            if int(min_v) < int(usr_v):
+                return False
+            elif int(min_v) > int(usr_v): 
+                return True
+        return False
+    try:
+        with open(CFG_PATH, "r") as f:
+            config = json.load(f)
+        if is_incompatible(config):
+            raise ValueError('Incompatible version')
+    except Exception as e:
+        print('Initializing config')
+        reset_dir(VIMLM_DIR)
+        config = DEFAULTS
+        with open(CFG_PATH, 'w') as f:
+            json.dump(DEFAULTS, f, indent=2)
+    for k, v in DEFAULTS.items():
+        globals()[k] = config.get(k, v)
 
-try:
-    with open(CFG_PATH, "r") as f:
-        config = json.load(f)
-    if is_old(config):
-        for p in [CFG_PATH, LOG_PATH, LTM_PATH]:
-            if os.path.isfile(p):
-                os.remove(p)
-        raise ValueError(f'Updating config')
-except Exception as e:
-    print(e)
-    config = DEFAULTS
-    with open(CFG_PATH, 'w') as f:
-        json.dump(DEFAULTS, f, indent=2)
-
-for k, v in DEFAULTS.items():
-    globals()[k] = config.get(k, v)
+initialize()
 
 def toout(s, key=None, mode=None):
     key = '' if key is None else ':'+key
@@ -112,18 +117,8 @@ def print_log():
         print(log["log"])
         print('\033[0m')
 
-toout('Loading LLM...')
-if LLM_MODEL is None:
-    from nanollama import Chat
-    chat = Chat(model_path='uncn_llama_32_3b_it')
-    toout(f'LLM is ready')
-else:
-    from mlx_lm_utils import Chat
-    chat = Chat(model_path=LLM_MODEL)
-    toout(f'{model_path.split('/')[-1]} is ready')
-
 def deploy(dest=None, src=None, reformat=True):
-    prompt_deploy = 'Reformat the text to ensure each code block is preceded by a filename in **filename.ext** format, with only alphanumeric characters, dots, underscores, or hyphens in the filename. Remove any extraneous characters from filenames.'
+    prompt_deploy = 'Reformat the response to ensure each code block is preceded by a filename in **filename.ext** format, with only alphanumeric characters, dots, underscores, or hyphens in the filename. Remove any extraneous characters from filenames.'
     tolog(f'deploy {dest=} {src=} {reformat=}')
     if src:
         chat.reset()
@@ -281,13 +276,10 @@ def ingest(src, max_len=NUM_TOKEN):
             for i, s in enumerate(list_str):
                 chat.reset()
                 toout(f'\n\nIngesting {k_base} {i+1}/{len(list_str)}...\n\n', mode='a')
-                tolog(f'{s=}') # DEBUG
                 newsum = chat(format_ingest.format(volat=volat, incoming=s.rstrip()), max_new=max_new_sum, verbose=False, stream=OUT_PATH)['text'].rstrip()
-                tolog(f'{k} {i+1}/{len(list_str)}: {newsum=}') # DEBUG
                 accum += newsum + ' ...\n'
                 volat = format_volat.format(k=k, newsum=newsum)
             toout(f'\n\nIngesting {k_base}...\n\n', mode='a')
-            tolog(f'{accum=}') # DEBUG
             if chat.get_ntok(accum) <= max_new_accum:
                 chat_summary = accum.strip()
             else:
@@ -302,6 +294,15 @@ def ingest(src, max_len=NUM_TOKEN):
     return result
 
 def process_command(data):
+    if 'fim' in data:
+        toout('Autocompleting...')
+        response = fim.fim(prefix=data['context'], suffix=data['yank'], current_path=data['tree'])
+        toout(response['autocomplete'], 'fim')
+        tolog(response)
+        data['user_prompt'] = ''
+        return data
+    for i in IN_FILES:
+        data[i] = data[i].strip()
     if len(data['user']) == 0:
         response = chat.resume(max_new=NUM_TOKEN, verbose=False, stream=OUT_PATH)
         toout(response['text'], mode='a')
@@ -321,7 +322,7 @@ def process_command(data):
             arg = cmd.removeprefix('continue').strip('(').strip(')').strip().strip('"').strip("'").strip()
             data['max_new'] = NUM_TOKEN if len(arg) == 0 else int(arg)
             response = chat.resume(max_new=data['max_new'], verbose=False, stream=OUT_PATH)
-            toout(response['text'], mode='a')
+            toout(response['text'])
             tolog(response)
             do_reset = False
             break
@@ -398,18 +399,19 @@ def process_command(data):
 async def monitor_directory():
     async for changes in awatch(WATCH_DIR):
         found_files = {os.path.basename(f) for _, f in changes}
-        tolog(f'{found_files=}') # DEBUG
         if IN_FILES[-1] in found_files and set(IN_FILES).issubset(set(os.listdir(WATCH_DIR))):
-            tolog(f'listdir()={os.listdir(WATCH_DIR)}') # DEBUG
             data = {}
             for file in IN_FILES:
                 path = os.path.join(WATCH_DIR, file)
                 with open(path, 'r', encoding='utf-8') as f:
-                    data[file] = f.read().strip()
+                    data[file] = f.read()
                 os.remove(os.path.join(WATCH_DIR, file))
             if 'followup' in os.listdir(WATCH_DIR):
                 os.remove(os.path.join(WATCH_DIR, 'followup'))
                 data['followup'] = True
+            if 'fim' in os.listdir(WATCH_DIR):
+                os.remove(os.path.join(WATCH_DIR, 'fim'))
+                data['fim'] = True
             if 'quit' in os.listdir(WATCH_DIR):
                 os.remove(os.path.join(WATCH_DIR, 'quit'))
                 data['quit'] = True
@@ -420,6 +422,8 @@ async def process_files(data):
     str_template = '{include}'
     data = process_command(data)
     if len(data['user_prompt']) == 0:
+        if 'wip' in os.listdir(WATCH_DIR):
+            os.remove(os.path.join(WATCH_DIR, 'wip'))
         return    
     if len(data['file']) > 0:
         str_template += '**{file}**\n'
@@ -434,8 +438,6 @@ async def process_files(data):
             else:
                 str_template += "`{yank}` "
     str_template += '{user_prompt}'
-    tolog(f'process_files o {data=}') # DEBUG
-    tolog(f'process_files {str_template=}') # DEBUG
     prompt = str_template.format(**data)
     tolog(prompt, 'tollm')
     toout('')
@@ -451,6 +453,8 @@ async def process_files(data):
             f.write(response['text'])
     if 'deploy_dest' in data:
         deploy(dest=data['deploy_dest'], reformat=False)
+    if 'wip' in os.listdir(WATCH_DIR):
+        os.remove(os.path.join(WATCH_DIR, 'wip'))
 
 KEYL = KEY_MAP.get('l', 'l')
 KEYJ = KEY_MAP.get('j', 'j')
@@ -639,10 +643,11 @@ function! PasteIntoLastVisualSelection(...)
 endfunction
 
 function! VimLM(...) range
-    let tree_file = s:watched_dir . '/tree'
-    while filereadable(tree_file)
+    let wip_file = s:watched_dir . '/wip'
+    while filereadable(wip_file)
         sleep 100m
     endwhile
+    call writefile([], wip_file, 'w')
     let user_input = join(a:000, ' ')
     if empty(user_input)
         echo "Usage: :VimLM <prompt> [!command1] [!command2] ..."
@@ -656,12 +661,61 @@ function! VimLM(...) range
     let user_file = s:watched_dir . '/user'
     call writefile([user_input], user_file, 'w')
     let current_file = expand('%:p')
+    let tree_file = s:watched_dir . '/tree'
     call writefile([current_file], tree_file, 'w')
     call ScrollToTop()
 endfunction
 
+function! SplitAtCursorInInsert()
+    let pos = getcurpos()
+    let line_num = pos[1]
+    let col = pos[2]
+    let lines = getline(1, '$')
+    let current_line = lines[line_num - 1]
+    let prefix_lines = lines[0:line_num - 2]
+    let prefix_part = strpart(current_line, 0, col - 1)
+    if !empty(prefix_part) || col > 1
+        call add(prefix_lines, prefix_part)
+    endif
+    let suffix_lines = []
+    let suffix_part = strpart(current_line, col - 1)
+    if !empty(suffix_part)
+        call add(suffix_lines, suffix_part)
+    endif
+    if line_num < len(lines)
+        call extend(suffix_lines, lines[line_num:])
+    endif
+    call writefile(prefix_lines, s:watched_dir . '/context', 'b')
+    call writefile(suffix_lines, s:watched_dir . '/yank', 'b')
+    call writefile([], s:watched_dir . '/fim', 'w')
+    call writefile([], s:watched_dir . '/user', 'w')
+    let current_file = expand('%:p')
+    let tree_file = s:watched_dir . '/tree'
+    call writefile([current_file], tree_file, 'w')
+endfunction
+
+function! InsertResponse()
+    let response_path = s:watched_dir . '/response.md'
+    if !filereadable(response_path)
+        echoerr "Response file not found: " . response_path
+        return
+    endif
+    let content = readfile(response_path)
+    let text = join(content, "\n")
+    call setreg('z', text)
+    let col = col('.')
+    let line = getline('.')
+    if col == len(line) + 1
+        normal! "zgpa
+    else
+        normal! "zgPa
+    endif
+endfunction
+
 command! ToggleVimLM call ToggleVimLM()
 command! -range -nargs=+ VimLM call VimLM(<f-args>)
+inoremap <silent> <C-l> <C-\><C-o>:call SplitAtCursorInInsert()<CR>
+inoremap <silent> <C-p> <C-\><C-o>:call InsertResponse()<CR>
 nnoremap $mapp :call PasteIntoLastVisualSelection()<CR>
 vnoremap $mapp <Cmd>:call PasteIntoLastVisualSelection()<CR>
 vnoremap $mapl <Cmd>:call VisualPrompt()<CR>
@@ -670,19 +724,13 @@ nnoremap $mapj :call FollowUpPrompt()<CR>
 call Monitor()
 """).safe_substitute(dict(WATCH_DIR=WATCH_DIR, mapl=mapl, mapj=mapj, mapp=mapp))
 
-async def main():
-    parser = argparse.ArgumentParser(description="VimLM - LLM-powered Vim assistant")
-    parser.add_argument('--test', action='store_true')
-    parser.add_argument("vim_args", nargs=argparse.REMAINDER, help="Vim arguments")
-    args = parser.parse_args()
-    if args.test:
-        return
+async def main(args):
     with tempfile.NamedTemporaryFile(mode='w', suffix='.vim', delete=False) as f:
         f.write(VIMLMSCRIPT)
         vim_script = f.name
     vim_command = ["vim", "-c", f"source {vim_script}"]
-    if args.vim_args:
-        vim_command.extend(args.vim_args)
+    if args.args_vim:
+        vim_command.extend(args.args_vim)
     else:
         vim_command.append('.tmp')
     try:
@@ -697,8 +745,78 @@ async def main():
             pass
         os.remove(vim_script)
 
+def get_common_dir_and_children(file_paths):
+    dirs = [os.path.dirname(path) for path in file_paths]
+    dir_parts = [path.split(os.sep) for path in dirs]
+    common_parts = []
+    for parts in zip(*dir_parts):
+        if all(part == parts[0] for part in parts):
+            common_parts.append(parts[0])
+        else:
+            break
+    parent_path = os.sep.join(common_parts)
+    child_paths = [os.path.relpath(path, parent_path) for path in file_paths]
+    repo_name = os.path.basename(os.path.dirname(parent_path))
+    return repo_name, parent_path, child_paths
+
+def get_repo(args_repo, args_vim):
+    if not args_repo:
+        return None
+    vim_files = []
+    for arg in args_vim:
+        if not arg.startswith('-'):
+            if os.path.exists(arg):
+                vim_files.append(os.path.abspath(arg))
+    repo_files = []
+    rest_files = []
+    for pattern in args_repo:
+        expanded_paths = glob.glob(pattern)
+        if expanded_paths:
+            for path in expanded_paths:
+                if not os.path.isfile(path) or path in vim_files+repo_files or os.path.basename(path).startswith('.') or is_binary(path):
+                    continue
+                if path in vim_files:
+                    rest_files.append(os.path.abspath(path))
+                else:
+                    repo_files.append(os.path.abspath(path))
+    repo_name, repo_path, child_paths = get_common_dir_and_children(repo_files+rest_files)
+    repo_names, rest_names = child_paths[:len(repo_files)], child_paths[len(repo_files):]
+    list_content = [f'<|repo_name|>{repo_name}\n']
+    list_mtime = []
+    for p, n in zip(repo_files, repo_names):
+        try:
+            with open(p, 'r') as f:
+                list_content.append(f'<|file_sep|>{n}\n{f.read()}\n')
+            list_mtime.append(int(os.path.getmtime(p)))
+        except Exception as e:
+            tolog(f'Skipped {p} d/t {e}', 'get_repo()')
+    return dict(repo_files=repo_files, rest_files=rest_files, rest_names=rest_names, vim_files=vim_files, list_mtime=list_mtime, list_content=list_content, repo_path=repo_path)
+
 def run():
-    asyncio.run(main())
+    parser = argparse.ArgumentParser(description="VimLM - LLM-powered Vim assistant")
+    parser.add_argument('--test', action='store_true', help="Run in test mode")
+    parser.add_argument('args_vim', nargs='*', help="Vim arguments")
+    parser.add_argument('--repo', nargs='*', help="Paths to directories or files (e.g., assets/*, path/to/file)")
+    args = parser.parse_args()
+    dict_repo = get_repo(args.repo, args.args_vim)
+    tolog(dict_repo, 'get_repo()')
+    if args.test:
+        return
+    reset_dir(WATCH_DIR)
+    toout('Loading LLM...')
+    if LLM_MODEL is None:
+        globals()['chat'] = nanollama.Chat(model_path='uncn_llama_32_3b_it')
+        toout(f'LLM is ready')
+    else:
+        globals()['chat'] = mlx_lm_utils.Chat(model_path=LLM_MODEL, think=THINK)
+        toout(f'{LLM_MODEL.split('/')[-1]} is ready')
+    if FIM_MODEL and FIM_MODEL != LLM_MODEL:
+        globals()['fim'] = mlx_lm_utils.Chat(model_path=FIM_MODEL, cache_dir=VIMLM_DIR, dict_repo=dict_repo)
+        toout(f'\n\n{FIM_MODEL.split("/")[-1]} is ready', mode='a')
+    else:
+        globals()['fim'] = chat
+        chat.set_cache_repo(dict_repo, cache_dir=VIMLM_DIR)
+    asyncio.run(main(args))
 
 if __name__ == '__main__':
     run()

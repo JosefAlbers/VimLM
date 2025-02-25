@@ -1,4 +1,3 @@
-
 # VimLM - AI-Powered Coding Assistant for Vim
 
 ![VimLM Demo](https://raw.githubusercontent.com/JosefAlbers/VimLM/main/assets/captioned_vimlm.gif)
@@ -26,7 +25,45 @@ pip install vimlm
 vimlm
 ```
 
-## Basic Usage
+## Smart Autocomplete  
+
+### **Basic Usage**
+
+| Key Binding | Mode    | Action                                  |  
+|-------------|---------|-----------------------------------------|  
+| `Ctrl-l`    | Insert  | Generate code suggestion                |  
+| `Ctrl-p`    | Insert  | Insert generated code                   |  
+
+*Example Workflow*:  
+1. Place cursor where you need code  
+```python
+def quicksort(arr):
+    if len(arr) <= 1:
+        return arr
+    pivot = arr[len(arr) // 2]
+    # <Cursor here>
+    middle = [x for x in arr if x == pivot]
+    right = [x for x in arr if x > pivot]
+    return quicksort(left) + middle + quicksort(right)
+```
+
+2. `Ctrl-l` to trigger → `Ctrl-p` to insert  
+
+### **Repository-Level Code Completion**
+
+| Option     | Description                              |
+|------------|------------------------------------------|
+| `--repo`   | Paths to include as repository context   |
+
+The `--repo` option enhances autocomplete by providing repository-level context to the LLM.
+
+*Example Workflow*:
+1. Launch VimLM with repo context: `vimlm main.py --repo utils/*`
+2. In Insert mode, place cursor where completion is needed
+3. `Ctrl-l` to generate suggestions informed by repository context
+4. `Ctrl-p` to accept and insert the code
+
+## Conversational Assistance
 
 | Key Binding | Mode          | Action                                 |
 |-------------|---------------|----------------------------------------|
@@ -64,12 +101,12 @@ vimlm
 
 `!` prefix to embed inline directives in prompts:
 
-| Directive        | Description                              |
-|------------------|------------------------------------------|
+| Directive        | Description                                |
+|------------------|--------------------------------------------|
 | `!include PATH`  | Add file/directory/shell output to context |
-| `!deploy DEST`   | Save code blocks to directory            |
-| `!continue N`    | Continue stopped response                |
-| `!followup`      | Continue conversation           |
+| `!deploy DEST`   | Save code blocks to directory              |
+| `!continue N`    | Continue stopped response                  |
+| `!followup`      | Continue conversation                      |
 
 ### 1. **Context Layering**
 ```text

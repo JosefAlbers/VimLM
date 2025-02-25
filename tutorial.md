@@ -134,8 +134,7 @@ By default, VimLM uses an uncensored Llama 3.2 3B model with token limit of 2000
 ```json
 {
   "LLM_MODEL": "mlx-community/DeepSeek-R1-Distill-Qwen-7B-4bit",
-  "NUM_TOKEN": 32768,
-  "VERSION": "0.0.8"
+  "NUM_TOKEN": 32768
 }
 ```
 

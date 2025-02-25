@@ -29,6 +29,10 @@ from pathlib import Path
 from string import Template
 import re
 
+import sys
+import tty
+import termios
+
 DEFAULTS = dict(
     LLM_MODEL = "mlx-community/Qwen2.5-Coder-3B-Instruct-4bit", # None | "mlx-community/DeepSeek-R1-Distill-Qwen-7B-4bit" | "mlx-community/deepseek-r1-distill-qwen-1.5b" |  "mlx-community/phi-4-4bit" (8.25gb) |  "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit" (8.31gb) |  "mlx-community/Qwen2.5-Coder-3B-Instruct-4bit" (1.74gb)
     FIM_MODEL = "mlx-community/Qwen2.5-Coder-0.5B-4bit", # None | "mlx-community/Qwen2.5-Coder-32B-4bit" |  "mlx-community/Qwen2.5-Coder-0.5B-4bit" (278mb)
@@ -94,7 +98,7 @@ def toout(s, key=None, mode=None):
     tolog(s, key='tovim'+key+':'+mode)
 
 def tolog(log, key='debug'):
-    if not DEBUG and key == 'debug':
+    if not DEBUG and 'debug' in key:
         return
     try:
         with open(LOG_PATH, "r", encoding="utf-8") as log_f:
@@ -706,9 +710,9 @@ function! InsertResponse()
     let col = col('.')
     let line = getline('.')
     if col == len(line) + 1
-        normal! "zgpa
+        normal! "zgp
     else
-        normal! "zgPa
+        normal! "zgP
     endif
 endfunction
 
@@ -759,6 +763,80 @@ def get_common_dir_and_children(file_paths):
     repo_name = os.path.basename(os.path.dirname(parent_path))
     return repo_name, parent_path, child_paths
 
+def get_key():
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    try:
+        tty.setraw(sys.stdin.fileno())
+        ch = sys.stdin.read(1)
+        if ch == '\x1b': 
+            ch = sys.stdin.read(2)
+            if ch == '[A':
+                return 'up'
+            elif ch == '[B':
+                return 'down'
+        elif ch == 'j':
+            return 'down'
+        elif ch == 'k':
+            return 'up'
+        elif ch in [' ', 'x']:
+            return 'space'
+        elif ch == '\r':
+            return 'enter'
+        elif ch == 'q':
+            return 'quit'
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+    return None
+
+def select_files_interactive(file_paths):
+    selected = [False] * len(file_paths)
+    current_row = 0
+    visible_start = 0
+    visible_end = 0
+    max_visible = 10
+    def display():
+        nonlocal visible_start, visible_end
+        visible_start = max(0, current_row - max_visible + 2)
+        visible_end = min(len(file_paths), visible_start + max_visible)
+        sys.stdout.write(f"\x1b[{max_visible + 2}A") 
+        for i in range(visible_start, visible_end):
+            prefix = "> " if i == current_row else "  "
+            check = "[X]" if selected[i] else "[ ]"
+            filename = os.path.basename(file_paths[i])[:40] 
+            sys.stdout.write(f"\x1b[K{prefix}{check} {filename}\n") 
+        scroll_indicator = f" [{visible_start+1}-{visible_end} of {len(file_paths)}] "
+        sys.stdout.write(f"\x1b[K{scroll_indicator}\nSpace:Toggle Enter:Confirm Arrows:Navigate\n")
+        sys.stdout.flush()
+    sys.stdout.write("\n" * (max_visible + 2))
+    display()
+    while True:
+        key = get_key()
+        if key == 'up' and current_row > 0:
+            current_row -= 1
+            if current_row < visible_start:
+                visible_start = max(0, visible_start - 1)
+                visible_end = visible_start + max_visible
+            display()
+        elif key == 'down' and current_row < len(file_paths) - 1:
+            current_row += 1
+            if current_row >= visible_end:
+                visible_start = min(len(file_paths) - max_visible, visible_start + 1)
+                visible_end = visible_start + max_visible
+            display()
+        elif key == 'space':
+            selected[current_row] = not selected[current_row]
+            display()
+        elif key == 'enter':
+            sys.stdout.write(f"\x1b[{max_visible + 2}B")
+            sys.stdout.write("\x1b[J") 
+            break
+        elif key == 'quit':
+            # selected = []
+            # break
+            return None
+    return [file_paths[i] for i in range(len(file_paths)) if selected[i]]
+
 def get_repo(args_repo, args_vim):
     if not args_repo:
         return None
@@ -767,18 +845,32 @@ def get_repo(args_repo, args_vim):
         if not arg.startswith('-'):
             if os.path.exists(arg):
                 vim_files.append(os.path.abspath(arg))
-    repo_files = []
-    rest_files = []
+    repo_paths = []
     for pattern in args_repo:
         expanded_paths = glob.glob(pattern)
         if expanded_paths:
             for path in expanded_paths:
-                if not os.path.isfile(path) or path in vim_files+repo_files or os.path.basename(path).startswith('.') or is_binary(path):
+                if not os.path.isfile(path) or path in vim_files+repo_paths or os.path.basename(path).startswith('.') or is_binary(path):
                     continue
-                if path in vim_files:
-                    rest_files.append(os.path.abspath(path))
-                else:
-                    repo_files.append(os.path.abspath(path))
+                repo_paths.append(os.path.abspath(path))
+    if len(repo_paths) > 9:
+        try:
+            sys.stdout.write("\n") 
+            selected_paths = select_files_interactive(repo_paths)
+            if not selected_paths:
+                return None
+            sys.stdout.write("\x1b[2A")  
+            sys.stdout.write("\x1b[J") 
+            repo_paths = selected_paths
+        except:
+            pass
+    repo_files = []
+    rest_files = []
+    for path in repo_paths:
+        if path in vim_files:
+            rest_files.append(os.path.abspath(path))
+        else:
+            repo_files.append(os.path.abspath(path))
     repo_name, repo_path, child_paths = get_common_dir_and_children(repo_files+rest_files)
     repo_names, rest_names = child_paths[:len(repo_files)], child_paths[len(repo_files):]
     list_content = [f'<|repo_name|>{repo_name}\n']
@@ -789,7 +881,7 @@ def get_repo(args_repo, args_vim):
                 list_content.append(f'<|file_sep|>{n}\n{f.read()}\n')
             list_mtime.append(int(os.path.getmtime(p)))
         except Exception as e:
-            tolog(f'Skipped {p} d/t {e}', 'get_repo()')
+            tolog(f'Skipped {p} d/t {e}', 'debug:get_repo()')
     return dict(repo_files=repo_files, rest_files=rest_files, rest_names=rest_names, vim_files=vim_files, list_mtime=list_mtime, list_content=list_content, repo_path=repo_path)
 
 def run():
@@ -799,7 +891,7 @@ def run():
     parser.add_argument('--repo', nargs='*', help="Paths to directories or files (e.g., assets/*, path/to/file)")
     args = parser.parse_args()
     dict_repo = get_repo(args.repo, args.args_vim)
-    tolog(dict_repo, 'get_repo()')
+    tolog(dict_repo, 'debug:get_repo()')
     if args.test:
         return
     reset_dir(WATCH_DIR)

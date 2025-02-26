@@ -44,7 +44,7 @@ DEFAULTS = dict(
     SEP_CMD = '!',
     THINK = ('<think>', '</think>'),
     VERSION = '0.1.0',
-    DEBUG = True,
+    DEBUG = False,
 )
 
 DATE_FORM = "%Y_%m_%d_%H_%M_%S"
@@ -696,6 +696,7 @@ function! SplitAtCursorInInsert()
     let current_file = expand('%:p')
     let tree_file = s:watched_dir . '/tree'
     call writefile([current_file], tree_file, 'w')
+    call ScrollToTop()
 endfunction
 
 function! InsertResponse()
@@ -716,10 +717,21 @@ function! InsertResponse()
     endif
 endfunction
 
+function! TabInInsert()
+    let wip_file = s:watched_dir . '/wip'
+    call writefile([], wip_file, 'w')
+    call SplitAtCursorInInsert()
+    while filereadable(wip_file)
+        sleep 10m
+    endwhile
+    call InsertResponse()
+endfunction
+
 command! ToggleVimLM call ToggleVimLM()
 command! -range -nargs=+ VimLM call VimLM(<f-args>)
-inoremap <silent> <C-l> <C-\><C-o>:call SplitAtCursorInInsert()<CR>
-inoremap <silent> <C-p> <C-\><C-o>:call InsertResponse()<CR>
+inoremap <silent> $mapl <C-\><C-o>:call SplitAtCursorInInsert()<CR>
+inoremap <silent> $mapp <C-\><C-o>:call InsertResponse()<CR><Right>
+inoremap <silent> $mapj <C-\><C-o>:call TabInInsert()<CR><Right>
 nnoremap $mapp :call PasteIntoLastVisualSelection()<CR>
 vnoremap $mapp <Cmd>:call PasteIntoLastVisualSelection()<CR>
 vnoremap $mapl <Cmd>:call VisualPrompt()<CR>

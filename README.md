@@ -33,6 +33,7 @@ vimlm
 |-------------|---------|-----------------------------------------|  
 | `Ctrl-l`    | Insert  | Generate code suggestion                |  
 | `Ctrl-p`    | Insert  | Insert generated code                   |  
+| `Ctrl-j`    | Insert  | Generate and insert code                |
 
 *Example Workflow*:  
 1. Place cursor where you need code  
@@ -47,7 +48,7 @@ def quicksort(arr):
     return quicksort(left) + middle + quicksort(right)
 ```
 
-2. `Ctrl-l` to trigger → `Ctrl-p` to insert  
+2. Use `Ctrl-j` to autocomplete
 
 ### **Repository-Level Code Completion**
 

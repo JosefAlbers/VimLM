@@ -28,13 +28,12 @@ import tempfile
 from pathlib import Path
 from string import Template
 import re
-
 import sys
 import tty
 import termios
 
 DEFAULTS = dict(
-    LLM_MODEL = "mlx-community/Qwen2.5-Coder-3B-Instruct-4bit", # None | "mlx-community/DeepSeek-R1-Distill-Qwen-7B-4bit" | "mlx-community/deepseek-r1-distill-qwen-1.5b" |  "mlx-community/phi-4-4bit" (8.25gb) |  "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit" (8.31gb) |  "mlx-community/Qwen2.5-Coder-3B-Instruct-4bit" (1.74gb)
+    LLM_MODEL = "mlx-community/Qwen2.5-Coder-3B-Instruct-4bit", # None | "mlx-community/DeepSeek-R1-Distill-Qwen-7B-4bit" | "mlx-community/deepseek-r1-distill-qwen-1.5b" |  "mlx-community/phi-4-4bit" (8.25gb) |  "mlx-community/Qwen2.5-Coder-14B-Instruct-4bit" (8.31gb) |  "mlx-community/Qwen2.5-Coder-3B-Instruct-4bit" (1.74gb) | "mlx-community/phi-4-4bit" (8.25gb)
     FIM_MODEL = "mlx-community/Qwen2.5-Coder-0.5B-4bit", # None | "mlx-community/Qwen2.5-Coder-32B-4bit" |  "mlx-community/Qwen2.5-Coder-0.5B-4bit" (278mb)
     NUM_TOKEN = 2000,
     USE_LEADER = False,
@@ -43,7 +42,7 @@ DEFAULTS = dict(
     SHOW_USER = False, 
     SEP_CMD = '!',
     THINK = ('<think>', '</think>'),
-    VERSION = '0.1.0',
+    VERSION = '0.1.2',
     DEBUG = False,
 )
 
@@ -555,10 +554,10 @@ function! SaveUserInput(prompt)
         return
     endif
     let user_file = s:watched_dir . '/user'
-    call writefile([user_input], user_file, 'w')
+    call writefile([user_input], user_file)
     let current_file = expand('%:p')
     let tree_file = s:watched_dir . '/tree'
-    call writefile([current_file], tree_file, 'w')
+    call writefile([current_file], tree_file)
     call ScrollToTop()
 endfunction
 
@@ -577,9 +576,9 @@ function! NormalPrompt()
 endfunction
 
 function! FollowUpPrompt()
-    call writefile([], s:watched_dir . '/yank', 'w')
-    call writefile([], s:watched_dir . '/context', 'w')
-    call writefile([], s:watched_dir . '/followup', 'w')
+    call writefile([], s:watched_dir . '/yank')
+    call writefile([], s:watched_dir . '/context')
+    call writefile([], s:watched_dir . '/followup')
     call SaveUserInput('... ')
 endfunction
 
@@ -651,7 +650,7 @@ function! VimLM(...) range
     while filereadable(wip_file)
         sleep 100m
     endwhile
-    call writefile([], wip_file, 'w')
+    call writefile([], wip_file)
     let user_input = join(a:000, ' ')
     if empty(user_input)
         echo "Usage: :VimLM <prompt> [!command1] [!command2] ..."
@@ -663,10 +662,10 @@ function! VimLM(...) range
     silent execute "'<,'>w! " . s:watched_dir . "/yank"
     silent execute "w! " . s:watched_dir . "/context"
     let user_file = s:watched_dir . '/user'
-    call writefile([user_input], user_file, 'w')
+    call writefile([user_input], user_file)
     let current_file = expand('%:p')
     let tree_file = s:watched_dir . '/tree'
-    call writefile([current_file], tree_file, 'w')
+    call writefile([current_file], tree_file)
     call ScrollToTop()
 endfunction
 
@@ -683,7 +682,9 @@ function! SplitAtCursorInInsert()
     endif
     let suffix_lines = []
     let suffix_part = strpart(current_line, col - 1)
-    if !empty(suffix_part)
+    if empty(suffix_part)
+        call add(suffix_lines, "")
+    else
         call add(suffix_lines, suffix_part)
     endif
     if line_num < len(lines)
@@ -691,11 +692,11 @@ function! SplitAtCursorInInsert()
     endif
     call writefile(prefix_lines, s:watched_dir . '/context', 'b')
     call writefile(suffix_lines, s:watched_dir . '/yank', 'b')
-    call writefile([], s:watched_dir . '/fim', 'w')
-    call writefile([], s:watched_dir . '/user', 'w')
+    call writefile([], s:watched_dir . '/fim')
+    call writefile([], s:watched_dir . '/user')
     let current_file = expand('%:p')
     let tree_file = s:watched_dir . '/tree'
-    call writefile([current_file], tree_file, 'w')
+    call writefile([current_file], tree_file)
     call ScrollToTop()
 endfunction
 
@@ -705,8 +706,10 @@ function! InsertResponse()
         echoerr "Response file not found: " . response_path
         return
     endif
-    let content = readfile(response_path)
+    let content = readfile(response_path, 'b')
     let text = join(content, "\n")
+    let saved_z = getreg('z')
+    let saved_ztype = getregtype('z')
     call setreg('z', text)
     let col = col('.')
     let line = getline('.')
@@ -715,11 +718,12 @@ function! InsertResponse()
     else
         normal! "zgP
     endif
+    call setreg('z', saved_z, saved_ztype)
 endfunction
 
 function! TabInInsert()
     let wip_file = s:watched_dir . '/wip'
-    call writefile([], wip_file, 'w')
+    call writefile([], wip_file)
     call SplitAtCursorInInsert()
     while filereadable(wip_file)
         sleep 10m

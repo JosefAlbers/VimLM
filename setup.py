@@ -5,7 +5,7 @@ with open("requirements.txt") as f:
 
 setup(
     name="vimlm",
-    version="0.1.1",
+    version="0.1.2",
     author="Josef Albers",
     author_email="albersj66@gmail.com",
     readme='README.md',

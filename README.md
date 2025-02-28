@@ -1,4 +1,4 @@
-# VimLM - AI-Powered Coding Assistant for Vim
+# VimLM - AI-Powered Coding Assistant for Vim/NeoVim
 
 ![VimLM Demo](https://raw.githubusercontent.com/JosefAlbers/VimLM/main/assets/captioned_vimlm.gif)
 
@@ -16,8 +16,8 @@ Get started quickly with the [tutorial](tutorial.md).
 
 ## Requirements
 - Apple Silicon (M-series)
-- Python 3.12.8
-- Vim 9.1
+- Python v3.12.8
+- Vim v9.1 or NeoVim v0.10.4
 
 ## Quick Start
 ```bash
